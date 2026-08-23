@@ -1,0 +1,12 @@
+# Local development only. Coolify never reads this file (it runs compose with
+# an explicit -f docker-compose.yml), so host ports live here.
+services:
+  aztest-web:
+    ports:
+      - "3100:3000"
+  aztest-api:
+    ports:
+      - "8100:8000"
+  aztest-postgres:
+    ports:
+      - "5433:5432"
