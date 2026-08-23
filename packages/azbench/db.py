@@ -230,6 +230,12 @@ class Database:
             _uid(run_id),
         )
 
+    async def delete_run(self, run_id: str) -> None:
+        """Generations cascade. This exists because the leaderboard aggregates
+        all history: a run made under a broken configuration would otherwise
+        drag a model's average down permanently."""
+        await self.execute("delete from runs where id = $1", _uid(run_id))
+
     async def set_run_status(self, run_id: str, status: str, *, error: str | None = None) -> None:
         stamp = {
             "RUNNING": "started_at = coalesce(started_at, now())",
