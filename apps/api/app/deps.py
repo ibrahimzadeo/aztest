@@ -84,8 +84,10 @@ async def run_defaults() -> dict:
         # default, not a starting point to raise casually.
         "concurrency": int(cfg.get("concurrency") or 3),
         "temperature": cfg.get("temperature", 0.7),
-        # Reasoning models spend completion tokens thinking before they write
-        # anything, so a tight cap returns an empty answer rather than a short
-        # one. Per-model overrides live in the model roster.
-        "max_output_tokens": int(cfg.get("max_output_tokens") or 4000),
+        # max_tokens is a CEILING, not a reservation: you are billed for what
+        # is generated, and the non-thinking models stop at 300-400 tokens
+        # whatever this says. A low value buys nothing and starves reasoning
+        # models — deepseek-v4 spent 5144 tokens thinking before writing a
+        # 200-word letter. So this is set generously on purpose.
+        "max_output_tokens": int(cfg.get("max_output_tokens") or 12000),
     }

@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Score from "../score";
 import { useRubric } from "../components";
-import { api, fmtCost, fmtMs, fmtNum } from "@/lib/api";
+import { api, fmtCost, fmtMs, fmtNum, reportUrl } from "@/lib/api";
 
 function Board() {
   const params = useSearchParams();
@@ -55,7 +55,20 @@ function Board() {
           </select>
         </div>
         {runId ? <span className="chip">yalnız bir run</span> : null}
+        <span style={{ flex: 1 }} />
+        <a
+          className="btn"
+          href={reportUrl(runId ? `/runs/${runId}` : `/overall${suiteId ? `?suite_id=${suiteId}` : ""}`)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          A4 hesabat
+        </a>
       </div>
+      <p className="hint" style={{ marginTop: -6 }}>
+        Hesabat metodologiya, nəticələr, nümunələr və məhdudiyyətlərlə birlikdə tək HTML
+        faylıdır — kənar auditoriya ilə paylaşmaq və ya PDF kimi saxlamaq üçün.
+      </p>
 
       {error ? <p className="error">{error}</p> : null}
 

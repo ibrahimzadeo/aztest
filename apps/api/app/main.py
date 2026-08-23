@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from azbench.rubric import DIMENSIONS
 
-from . import routes_library, routes_results, routes_runs, routes_settings
+from . import routes_library, routes_reports, routes_results, routes_runs, routes_settings
 from .deps import db, redis, require_key
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -69,3 +69,4 @@ app.include_router(routes_settings.router)
 app.include_router(routes_library.router)
 app.include_router(routes_runs.router)
 app.include_router(routes_results.router)
+app.include_router(routes_reports.router)

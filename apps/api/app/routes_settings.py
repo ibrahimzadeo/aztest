@@ -33,7 +33,7 @@ class JudgeIn(BaseModel):
 class DefaultsIn(BaseModel):
     concurrency: int = Field(default=SAFE_CONCURRENCY, ge=1, le=10)
     temperature: float | None = 0.7
-    max_output_tokens: int = Field(default=4000, ge=64, le=32000)
+    max_output_tokens: int = Field(default=12000, ge=64, le=32000)
 
 
 class ModelIn(BaseModel):
