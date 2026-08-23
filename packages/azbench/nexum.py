@@ -1,0 +1,163 @@
+"""Nexum Router client — OpenAI-compatible chat completions.
+
+Nexum (https://dialagram.me/router/v1) serves BARE model ids (no `vendor/`
+prefix), charges a flat weekly fee (so per-token pricing is whatever the
+operator sets by hand in Settings), and returns HTTP 429 at concurrency 4.
+Its /models endpoint is slow (~18s) and is the only reliable source of the
+model list — the marketing page under-reports it.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import random
+import time
+from dataclasses import dataclass, field
+
+import httpx
+
+log = logging.getLogger("azbench.nexum")
+
+DEFAULT_BASE_URL = "https://dialagram.me/router/v1"
+# /models has been measured at ~18s; anything under 20s times out spuriously.
+CATALOG_TIMEOUT_S = 45.0
+CHAT_TIMEOUT_S = 300.0
+# Nexum 429s at concurrency 4, so 3 is the ceiling for in-flight requests.
+SAFE_CONCURRENCY = 3
+
+
+class ProviderError(RuntimeError):
+    """A call to the provider failed in a way the caller should surface."""
+
+    def __init__(self, message: str, *, status: int | None = None, retryable: bool = False):
+        super().__init__(message)
+        self.status = status
+        self.retryable = retryable
+
+
+@dataclass
+class Completion:
+    text: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    latency_ms: int = 0
+    model: str = ""
+    finish_reason: str = ""
+    raw_usage: dict = field(default_factory=dict)
+
+
+class NexumClient:
+    """Thin async client. One instance per process; it owns an httpx pool."""
+
+    def __init__(self, api_key: str, base_url: str = DEFAULT_BASE_URL):
+        if not api_key:
+            raise ProviderError("no API key configured — set it in Settings")
+        self.api_key = api_key
+        self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+    async def list_models(self) -> list[dict]:
+        """Return the raw /models entries, sorted by id."""
+        async with httpx.AsyncClient(timeout=CATALOG_TIMEOUT_S) as client:
+            try:
+                res = await client.get(f"{self.base_url}/models", headers=self._headers())
+            except httpx.RequestError as exc:
+                raise ProviderError(f"cannot reach {self.base_url}: {exc}", retryable=True) from exc
+        if res.status_code != 200:
+            raise ProviderError(
+                f"/models returned {res.status_code}: {res.text[:300]}", status=res.status_code
+            )
+        data = res.json().get("data") or []
+        return sorted((m for m in data if m.get("id")), key=lambda m: m["id"])
+
+    async def complete(
+        self,
+        model: str,
+        prompt: str,
+        *,
+        system: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        attempts: int = 4,
+    ) -> Completion:
+        """One chat completion, retrying 429/5xx with jittered backoff.
+
+        Retries matter more here than elsewhere: a rate-limited generation
+        would otherwise land in the results table as a model failure and skew
+        a leaderboard the operator reads as a quality signal.
+        """
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        payload: dict = {"model": model, "messages": messages}
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+
+        last: ProviderError | None = None
+        async with httpx.AsyncClient(timeout=CHAT_TIMEOUT_S) as client:
+            for attempt in range(1, attempts + 1):
+                started = time.monotonic()
+                try:
+                    res = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=self._headers(),
+                        json=payload,
+                    )
+                except httpx.RequestError as exc:
+                    last = ProviderError(f"request failed: {exc}", retryable=True)
+                else:
+                    if res.status_code == 200:
+                        return _parse_completion(res.json(), model, started)
+                    retryable = res.status_code == 429 or res.status_code >= 500
+                    last = ProviderError(
+                        f"{res.status_code}: {res.text[:300]}",
+                        status=res.status_code,
+                        retryable=retryable,
+                    )
+                if not last.retryable or attempt == attempts:
+                    raise last
+                delay = min(30.0, 2.0 * (2 ** (attempt - 1))) + random.uniform(0, 1.5)
+                log.warning("%s attempt %d failed (%s); retry in %.1fs", model, attempt, last, delay)
+                await asyncio.sleep(delay)
+        raise last or ProviderError("exhausted retries")
+
+
+def _parse_completion(body: dict, model: str, started: float) -> Completion:
+    latency_ms = int((time.monotonic() - started) * 1000)
+    choices = body.get("choices") or []
+    if not choices:
+        raise ProviderError(f"no choices in response: {str(body)[:300]}")
+    message = choices[0].get("message") or {}
+    text = (message.get("content") or "").strip()
+    # Reasoning models sometimes put everything in `reasoning` and leave
+    # content empty; an empty answer is a real failure for a writing test.
+    if not text and message.get("reasoning"):
+        text = str(message["reasoning"]).strip()
+    usage = body.get("usage") or {}
+    return Completion(
+        text=text,
+        prompt_tokens=int(usage.get("prompt_tokens") or 0),
+        completion_tokens=int(usage.get("completion_tokens") or 0),
+        latency_ms=latency_ms,
+        model=body.get("model") or model,
+        finish_reason=choices[0].get("finish_reason") or "",
+        raw_usage=usage,
+    )
+
+
+def cost_usd(prompt_tokens: int, completion_tokens: int, in_per_m: float, out_per_m: float) -> float:
+    """Cost from operator-set rates. Nexum is flat-fee, so rates default to 0
+    and reported cost is 0 until someone sets an effective rate."""
+    return (prompt_tokens / 1_000_000) * float(in_per_m or 0) + (
+        completion_tokens / 1_000_000
+    ) * float(out_per_m or 0)
