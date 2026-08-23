@@ -156,6 +156,11 @@ export function OutputColumn({ gen, onOpen }) {
       <div className="foot">
         <span className="mono">{fmtMs(gen.latency_ms)}</span>
         <span className="mono">{gen.completion_tokens} token</span>
+        {gen.reasoning_tokens ? (
+          <span className="mono dim" title="Düşünməyə xərclənən token">
+            {gen.reasoning_tokens} düşünmə
+          </span>
+        ) : null}
         {gen.finish_reason ? <span className="mono dim">{gen.finish_reason}</span> : null}
         <span className="mono">{fmtCost(gen.cost)}</span>
         {onOpen ? (

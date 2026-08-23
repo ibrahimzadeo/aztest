@@ -138,6 +138,8 @@ async def _generate_and_score(db, client, gen, run, roster, jcfg) -> None:
             system=gen["system_prompt"] or None,
             temperature=_num(model_cfg.get("temperature"), run["temperature"]),
             max_tokens=int(model_cfg.get("max_output_tokens") or run["max_output_tokens"] or 4000),
+            reasoning_effort=model_cfg.get("reasoning_effort") or None,
+            extra_params=model_cfg.get("extra_params") or None,
         )
     except ProviderError as exc:
         await db.finish_generation(gen["id"], status="ERROR", error=str(exc)[:2000])
@@ -163,6 +165,7 @@ async def _generate_and_score(db, client, gen, run, roster, jcfg) -> None:
             completion_tokens=completion.completion_tokens,
             cost=cost, latency_ms=completion.latency_ms,
             finish_reason=completion.finish_reason,
+            reasoning_tokens=completion.reasoning_tokens,
         )
         await db.save_judge(gen["id"], status="SKIPPED", error="no answer to score")
         log.warning("gen %s (%s): %s", gen["id"], gen["model_id"], empty)
@@ -175,6 +178,7 @@ async def _generate_and_score(db, client, gen, run, roster, jcfg) -> None:
         cost=cost, latency_ms=completion.latency_ms, checks=checks,
         mechanics_score=checks["mechanics_score"],
         finish_reason=completion.finish_reason,
+        reasoning_tokens=completion.reasoning_tokens,
     )
     if completion.truncated:
         log.info("gen %s (%s): answer was cut off at the token cap", gen["id"], gen["model_id"])

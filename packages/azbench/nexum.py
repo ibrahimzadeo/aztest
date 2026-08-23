@@ -31,6 +31,10 @@ CHAT_TIMEOUT = httpx.Timeout(connect=30.0, read=180.0, write=30.0, pool=30.0)
 SAFE_CONCURRENCY = 3
 
 
+# Request fields the caller may never override through extra_params.
+PROTECTED_PARAMS = frozenset({"model", "messages", "stream", "stream_options"})
+
+
 class ProviderError(RuntimeError):
     """A call to the provider failed in a way the caller should surface."""
 
@@ -127,6 +131,8 @@ class NexumClient:
         system: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        reasoning_effort: str | None = None,
+        extra_params: dict | None = None,
         attempts: int = 4,
     ) -> Completion:
         """One chat completion, retrying 429/5xx with jittered backoff.
@@ -153,6 +159,17 @@ class NexumClient:
             payload["temperature"] = temperature
         if max_tokens:
             payload["max_tokens"] = max_tokens
+        if reasoning_effort:
+            payload["reasoning_effort"] = reasoning_effort
+        # Per-model escape hatch for vendor-specific fields. It cannot
+        # overwrite the keys that make the request work at all — a typo in
+        # settings should not silently un-stream a request or send a
+        # different model than the results are filed under.
+        for key, value in (extra_params or {}).items():
+            if key in PROTECTED_PARAMS:
+                log.warning("ignoring extra param %r for %s: reserved", key, model)
+                continue
+            payload[key] = value
 
         last: ProviderError | None = None
         async with httpx.AsyncClient(timeout=CHAT_TIMEOUT, transport=self._transport) as client:
