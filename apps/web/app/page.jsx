@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, post, fmtCost } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
 import { Flags, JudgePanel, Metrics, ModelPicker, OutputColumn, useModels, useRubric } from "./components";
 
+// The examples stay in Azerbaijani in both interface languages: they are the
+// text sent to the model, and this benchmark measures Azerbaijani writing.
 const EXAMPLES = [
   "Bir bankın adından müştəriyə rəsmi üzrxahlıq məktubu yaz (150 söz).",
   "Bu cümləni redaktə et və səhvləri izah et: \"Hormetli mustəri, sizin muracietiniz baxildi.\"",
@@ -12,6 +15,7 @@ const EXAMPLES = [
 ];
 
 export default function Playground() {
+  const { t } = useLang();
   const { enabled } = useModels();
   const dimensions = useRubric();
   const [prompt, setPrompt] = useState("");
@@ -73,51 +77,53 @@ export default function Playground() {
   return (
     <>
       <div className="hero">
-        <div className="eyebrow"><span className="dot" /> Playground</div>
-        <h1>Bir prompt, bir neçə model, yan-yana</h1>
+        <div className="eyebrow"><span className="dot" /> {t("pg.eyebrow")}</div>
+        <h1>{t("pg.h1")}</h1>
         <p className="lede">
-          Sürətli yoxlama üçün: promptu yaz, modelləri seç, cavabları eyni ekranda müqayisə et.
-          Təkrar ölçmə üçün tapşırığı <Link href="/tasks" style={{ color: "var(--accent)" }}>kitabxanaya</Link> əlavə et
-          və <Link href="/suites" style={{ color: "var(--accent)" }}>dəst</Link> kimi işə sal.
+          {t("pg.lede_1")}{" "}
+          <Link href="/tasks" style={{ color: "var(--accent)" }}>{t("pg.lede_library")}</Link>{" "}
+          {t("pg.lede_2")}{" "}
+          <Link href="/suites" style={{ color: "var(--accent)" }}>{t("pg.lede_suite")}</Link>
+          {t("pg.lede_3")}
         </p>
       </div>
 
       <form className="card primary" onSubmit={launch}>
-        <h2>Prompt</h2>
+        <h2>{t("common.prompt")}</h2>
         <textarea
           className="field"
           rows={5}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Modelə Azərbaycan dilində tapşırıq ver…"
+          placeholder={t("pg.placeholder")}
         />
         <div className="pills" style={{ marginTop: 8 }}>
           {EXAMPLES.map((ex, i) => (
             <button type="button" key={i} className="btn small ghost" onClick={() => setPrompt(ex)}>
-              nümunə {i + 1}
+              {t("pg.example")} {i + 1}
             </button>
           ))}
         </div>
 
-        <label className="lbl">Sistem promptu (istəyə bağlı)</label>
+        <label className="lbl">{t("pg.system_prompt")}</label>
         <textarea
           className="field"
           rows={2}
           value={system}
           onChange={(e) => setSystem(e.target.value)}
-          placeholder="Məsələn: Sən Azərbaycan dilinin redaktorusan."
+          placeholder={t("pg.system_placeholder")}
         />
 
-        <label className="lbl">Modellər ({selected.length} seçilib)</label>
+        <label className="lbl">{t("common.models")} ({selected.length} {t("common.selected")})</label>
         <ModelPicker models={enabled} selected={selected} onChange={setSelected} />
 
         <div className="actions" style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 16 }}>
           <button className="btn" disabled={busy || !prompt.trim() || !selected.length}>
-            {busy ? "Göndərilir…" : "İşə sal"}
+            {busy ? t("pg.sending") : t("common.launch")}
           </button>
           <label className="pill">
             <input type="checkbox" checked={judge} onChange={(e) => setJudge(e.target.checked)} />
-            hakim qiyməti
+            {t("pg.judge_toggle")}
           </label>
           {error ? <span className="error">{error}</span> : null}
         </div>
@@ -126,12 +132,12 @@ export default function Playground() {
       {run ? (
         <>
           <div className="toolbar" style={{ margin: "18px 0 10px" }}>
-            <h1 style={{ margin: 0, fontSize: 17 }}>Cavablar</h1>
+            <h1 style={{ margin: 0, fontSize: 17 }}>{t("common.answers")}</h1>
             <span className="dim mono">{run.status}</span>
             <span className="dim">{gens.filter((g) => g.status === "DONE" || g.status === "ERROR").length}/{gens.length}</span>
             <span className="dim mono">{fmtCost(cost)}</span>
             <span style={{ flex: 1 }} />
-            <Link className="btn small ghost" href={`/runs/${run.id}`}>Run səhifəsi</Link>
+            <Link className="btn small ghost" href={`/runs/${run.id}`}>{t("pg.run_page")}</Link>
           </div>
           <div className="columns">
             {gens.map((g) => (
@@ -144,14 +150,14 @@ export default function Playground() {
       {open ? (
         <div className="card">
           <div className="toolbar">
-            <h2 style={{ margin: 0 }}>{open.model_id} — təhlil</h2>
+            <h2 style={{ margin: 0 }}>{open.model_id} — {t("common.analysis").toLowerCase()}</h2>
             <span style={{ flex: 1 }} />
-            <button className="btn small ghost" onClick={() => setOpenId(null)}>Bağla</button>
+            <button className="btn small ghost" onClick={() => setOpenId(null)}>{t("common.close")}</button>
           </div>
-          <h2 style={{ marginTop: 14 }}>Mexaniki yoxlamalar</h2>
+          <h2 style={{ marginTop: 14 }}>{t("pg.mech_checks")}</h2>
           <Flags checks={open.checks} />
           <Metrics checks={open.checks} />
-          <h2 style={{ marginTop: 16 }}>Hakim</h2>
+          <h2 style={{ marginTop: 16 }}>{t("common.judge")}</h2>
           <JudgePanel generation={open} dimensions={dimensions} />
         </div>
       ) : null}

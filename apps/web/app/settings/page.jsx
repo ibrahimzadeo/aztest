@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, post, put } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
 
 export default function Settings() {
+  const { t } = useLang();
   const [settings, setSettings] = useState(null);
   const [key, setKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -33,7 +35,7 @@ export default function Settings() {
     try {
       const s = await put(path, body);
       setSettings(s);
-      setMsg(`${label} yadda saxlanıldı.`);
+      setMsg(`${label} ${t("settings.saved")}`);
       if (path.endsWith("/provider")) setKey("");
     } catch (e) {
       setError(e.message);
@@ -49,139 +51,131 @@ export default function Settings() {
     }
   }
 
-  if (!settings) return <p className="spinner">Yüklənir…</p>;
+  if (!settings) return <p className="spinner">{t("common.loading")}</p>;
 
   return (
     <div className="settings">
       <div className="hero">
-        <div className="eyebrow"><span className="dot" /> Parametrlər</div>
-        <h1>Provayder, hakim və run defoltları</h1>
-        <p className="lede">
-          Bütün parametrlər bazada saxlanılır — deploy zamanı env dəyişənləri yalnız ilk
-          dəfə üçün ehtiyat variantdır. API açarı şifrələnmiş saxlanılır və heç vaxt geri
-          oxunmur, yalnız maskalanmış formada göstərilir.
-        </p>
+        <div className="eyebrow"><span className="dot" /> {t("settings.eyebrow")}</div>
+        <h1>{t("settings.h1")}</h1>
+        <p className="lede">{t("settings.lede")}</p>
       </div>
 
       {msg ? <p className="hint">{msg}</p> : null}
       {error ? <p className="error">{error}</p> : null}
 
       <div className="card primary">
-        <h2>Provayder — Nexum Router</h2>
-        <p className="card-desc">
-          OpenAI-uyğun endpoint. Model kodları prefiksiz yazılır (məsələn <span className="mono">deepseek-v4</span>).
-          Nexum sabit həftəlik ödənişlidir, ona görə token qiymətlərini əl ilə təyin etmək lazımdır
-          (yoxsa xərc hesabatı 0 göstərir).
-        </p>
+        <h2>{t("settings.provider_h")}</h2>
+        <p className="card-desc">{t("settings.provider_desc")}</p>
         <label className="lbl">Base URL</label>
         <input className="field mono" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} style={{ width: "100%" }} />
-        <label className="lbl">API açarı</label>
+        <label className="lbl">{t("settings.api_key")}</label>
         <input
           className="field"
           type="password"
           value={key}
           onChange={(e) => setKey(e.target.value)}
-          placeholder={settings.provider.has_key ? `saxlanılıb: ${settings.provider.key_masked}` : "açar təyin edilməyib"}
+          placeholder={settings.provider.has_key ? `${t("settings.key_stored")} ${settings.provider.key_masked}` : t("settings.key_unset")}
           style={{ width: "100%" }}
         />
-        <p className="hint">Boş buraxsan, mövcud açar dəyişmir.</p>
+        <p className="hint">{t("settings.key_hint")}</p>
         <div className="actions">
           <button
             className="btn"
-            onClick={() => save("/settings/provider", { base_url: baseUrl, ...(key ? { api_key: key } : {}) }, "Provayder")}
+            onClick={() =>
+              save("/settings/provider", { base_url: baseUrl, ...(key ? { api_key: key } : {}) },
+                   t("settings.provider_h"))
+            }
           >
-            Yadda saxla
+            {t("common.save")}
           </button>
-          <button className="btn ghost" onClick={runProbe}>Bağlantını yoxla</button>
+          <button className="btn ghost" onClick={runProbe}>{t("settings.test")}</button>
         </div>
         {probe ? (
           probe.loading ? (
-            <div className="probe">Yoxlanılır… (/models cavabı 20 saniyəyə qədər çəkə bilər)</div>
+            <div className="probe">{t("settings.testing")}</div>
           ) : probe.ok ? (
             <div className="probe ok">
-              Bağlantı işləyir — {probe.model_count} model mövcuddur.{" "}
-              <Link href="/settings/models" style={{ color: "var(--accent)" }}>Kataloqa keç</Link>
+              {t("settings.probe_ok")} {probe.model_count} {t("settings.probe_models")}{" "}
+              <Link href="/settings/models" style={{ color: "var(--accent)" }}>
+                {t("settings.probe_catalog")}
+              </Link>
             </div>
           ) : (
-            <div className="probe bad">Alınmadı: {probe.error}</div>
+            <div className="probe bad">{t("settings.probe_fail")} {probe.error}</div>
           )
         ) : null}
       </div>
 
       <div className="card">
-        <h2>Hakim (LLM judge)</h2>
-        <p className="card-desc">
-          Hakim hər cavabı Azərbaycan dilində rubrika üzrə qiymətləndirir. Prompt Azərbaycan
-          dilindədir və nəticə strukturlaşdırılmış JSON kimi qaytarılır.
-        </p>
-        <label className="lbl">Hakim modeli</label>
+        <h2>{t("settings.judge_h")}</h2>
+        <p className="card-desc">{t("settings.judge_desc")}</p>
+        <label className="lbl">{t("settings.judge_model")}</label>
         <select className="field" value={judge.model} onChange={(e) => setJudge({ ...judge, model: e.target.value })}>
-          <option value="">— seçilməyib —</option>
+          <option value="">{t("settings.unset")}</option>
           {models.map((m) => <option key={m.model_id} value={m.model_id}>{m.label || m.model_id}</option>)}
         </select>
-        <p className="hint">
-          Hakim öz cavabını da qiymətləndirdiyi üçün nəticələrə meyl (self-preference) düşə bilər —
-          kor qiymətləndirmə ilə yoxlamaq tövsiyə olunur.
-        </p>
+        <p className="hint">{t("settings.judge_bias_hint")}</p>
         <div className="prices">
           <label>
-            Maks. output token
+            {t("settings.max_out")}
             <input className="field" type="number" value={judge.max_output_tokens}
                    onChange={(e) => setJudge({ ...judge, max_output_tokens: +e.target.value })} />
           </label>
           <label>
-            Input $/1M
+            {t("settings.in_price")}
             <input className="field" type="number" step="0.01" value={judge.input_price_per_m}
                    onChange={(e) => setJudge({ ...judge, input_price_per_m: +e.target.value })} />
           </label>
           <label>
-            Output $/1M
+            {t("settings.out_price")}
             <input className="field" type="number" step="0.01" value={judge.output_price_per_m}
                    onChange={(e) => setJudge({ ...judge, output_price_per_m: +e.target.value })} />
           </label>
         </div>
         <label className="pill">
           <input type="checkbox" checked={!!judge.enabled} onChange={(e) => setJudge({ ...judge, enabled: e.target.checked })} />
-          yeni runlarda hakim defolt olaraq işləsin
+          {t("settings.judge_default")}
         </label>
         <div className="actions">
-          <button className="btn" onClick={() => save("/settings/judge", judge, "Hakim")}>Yadda saxla</button>
+          <button className="btn" onClick={() => save("/settings/judge", judge, t("common.judge"))}>
+            {t("common.save")}
+          </button>
         </div>
       </div>
 
       <div className="card">
-        <h2>Run defoltları</h2>
+        <h2>{t("settings.defaults_h")}</h2>
         <div className="prices">
           <label>
-            Paralellik
+            {t("suites.concurrency")}
             <input className="field" type="number" min="1" max="10" value={defaults.concurrency}
                    onChange={(e) => setDefaults({ ...defaults, concurrency: +e.target.value })} />
           </label>
           <label>
-            Temperature
+            {t("settings.temperature")}
             <input className="field" type="number" step="0.1" value={defaults.temperature ?? 0.7}
                    onChange={(e) => setDefaults({ ...defaults, temperature: +e.target.value })} />
           </label>
           <label>
-            Maks. output token
+            {t("settings.max_out")}
             <input className="field" type="number" value={defaults.max_output_tokens}
                    onChange={(e) => setDefaults({ ...defaults, max_output_tokens: +e.target.value })} />
           </label>
         </div>
         <div className="caveat">
-          <strong>Düşünən (thinking) modellər:</strong> onlar cavabı yazmağa başlamadan
-          əvvəl minlərlə token “düşünməyə” xərcləyir. Maks output token az olsa, model
-          heç nə qaytarmır — bu, pis yazı deyil, konfiqurasiya problemidir və nəticələrdə
-          “xəta” kimi göstərilir. Belə modellər üçün Modellər səhifəsində fərdi, daha
-          böyük hədd təyin et.
+          <strong>{t("settings.thinking_note_label")}</strong> {t("settings.thinking_note")}
         </div>
         <div className="caveat">
-          <strong>Paralellik {settings.safe_concurrency}-dən yuxarı qaldırılmamalıdır:</strong> Nexum
-          Router 4 eyni vaxtlı sorğuda HTTP 429 qaytarır. Worker hər halda öz həddini tətbiq edir,
-          amma 429-lar cavabları xətaya çevirib nəticələri təhrif edir.
+          <strong>
+            {t("settings.concurrency_note_label")} {settings.safe_concurrency}
+          </strong>{" "}
+          {t("settings.concurrency_note")}
         </div>
         <div className="actions">
-          <button className="btn" onClick={() => save("/settings/defaults", defaults, "Defoltlar")}>Yadda saxla</button>
+          <button className="btn" onClick={() => save("/settings/defaults", defaults, t("settings.defaults_h"))}>
+            {t("common.save")}
+          </button>
         </div>
       </div>
     </div>

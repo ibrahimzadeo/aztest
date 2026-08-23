@@ -395,3 +395,15 @@ table.heat td.h { text-align: center; font-variant-numeric: tabular-nums; font-s
 .toolbar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .toolbar .grow { flex: 1; min-width: 180px; }
 .spinner { color: var(--ink-3); font-size: 13px; }
+
+/* Language switch: a two-state segmented control, small enough to sit in the
+   nav without competing with the product tabs. */
+.nav .right { display: flex; align-items: center; gap: 12px; }
+.langswitch { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.langswitch button {
+  border: none; background: var(--surface); color: var(--ink-3); cursor: pointer;
+  padding: 3px 9px; font-size: 11.5px; font-weight: 650; letter-spacing: .04em;
+}
+.langswitch button + button { border-left: 1px solid var(--border); }
+.langswitch button:hover { color: var(--ink-2); background: var(--surface-2); }
+.langswitch button.active { background: var(--accent); color: var(--accent-ink); }

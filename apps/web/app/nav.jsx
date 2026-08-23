@@ -2,40 +2,42 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LANGS, useLang } from "@/lib/i18n";
 
 // Three clusters: write a prompt, measure a library, read the results.
 // Every screen carries a one-line description so the nav explains itself.
+// Structure only — every label is resolved through the dictionary at render.
 const CLUSTERS = {
   bench: {
     key: "bench",
-    label: "Bench",
+    label: "nav.bench",
     href: "/",
-    blurb: "Prompt yaz, tapşırıq kitabxanası saxla, modelləri işə sal.",
+    blurb: "nav.bench_blurb",
     items: [
-      { href: "/", label: "Playground", desc: "Bir prompt, bir neçə model, yan-yana" },
-      { href: "/tasks", label: "Tapşırıqlar", desc: "Yazı tapşırıqları kitabxanası" },
-      { href: "/suites", label: "Dəstlər", desc: "Bir işə salma üçün qruplaşdırılmış tapşırıqlar" },
+      { href: "/", label: "nav.playground", desc: "nav.playground_desc" },
+      { href: "/tasks", label: "common.tasks", desc: "nav.tasks_desc" },
+      { href: "/suites", label: "nav.suites", desc: "nav.suites_desc" },
     ],
   },
   results: {
     key: "results",
-    label: "Nəticələr",
+    label: "nav.results",
     href: "/leaderboard",
-    blurb: "Modelləri müqayisə et, cavabları oxu, hakimi insan qiyməti ilə yoxla.",
+    blurb: "nav.results_blurb",
     items: [
-      { href: "/leaderboard", label: "Reytinq", desc: "Model üzrə ortalama ballar" },
-      { href: "/runs", label: "İşə salmalar", desc: "Hər run və onun cavabları" },
-      { href: "/review", label: "Kor qiymətləndirmə", desc: "Model adı gizli, insan balı" },
+      { href: "/leaderboard", label: "nav.leaderboard", desc: "nav.leaderboard_desc" },
+      { href: "/runs", label: "nav.runs", desc: "nav.runs_desc" },
+      { href: "/review", label: "nav.review", desc: "nav.review_desc" },
     ],
   },
   settings: {
     key: "settings",
-    label: "Parametrlər",
+    label: "nav.settings",
     href: "/settings",
-    blurb: "Provayder açarı, model siyahısı, hakim modeli və run defoltları.",
+    blurb: "nav.settings_blurb",
     items: [
-      { href: "/settings", label: "Provayder və hakim", desc: "Nexum açarı, judge modeli" },
-      { href: "/settings/models", label: "Modellər", desc: "Test edilən modellərin siyahısı" },
+      { href: "/settings", label: "nav.provider_judge", desc: "nav.provider_judge_desc" },
+      { href: "/settings/models", label: "common.models", desc: "nav.models_desc" },
     ],
   },
 };
@@ -48,6 +50,7 @@ function itemActive(path, href) {
 
 export default function Nav() {
   const path = usePathname();
+  const { lang, setLang, t } = useLang();
   const activeKey = path.startsWith("/settings")
     ? "settings"
     : path.startsWith("/leaderboard") || path.startsWith("/runs") || path.startsWith("/review")
@@ -64,15 +67,30 @@ export default function Nav() {
         <div className="tabs">
           {Object.values(CLUSTERS).map((c) => (
             <Link key={c.key} href={c.href} className={c.key === activeKey ? "tab active" : "tab"}>
-              {c.label}
+              {t(c.label)}
             </Link>
           ))}
         </div>
-        <span className="right mono">{process.env.NEXT_PUBLIC_PROVIDER_LABEL || "nexum router"}</span>
+        <div className="right">
+          <div className="langswitch" role="group" aria-label={t("common.language")}>
+            {Object.entries(LANGS).map(([code, label]) => (
+              <button
+                key={code}
+                type="button"
+                className={code === lang ? "active" : ""}
+                aria-pressed={code === lang}
+                onClick={() => setLang(code)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="mono">{process.env.NEXT_PUBLIC_PROVIDER_LABEL || "nexum router"}</span>
+        </div>
       </nav>
 
-      <nav className="subnav" aria-label={cluster.label}>
-        <span className="subnav-blurb">{cluster.blurb}</span>
+      <nav className="subnav" aria-label={t(cluster.label)}>
+        <span className="subnav-blurb">{t(cluster.blurb)}</span>
         <div className="subnav-items">
           {cluster.items.map((it) => (
             <Link
@@ -80,8 +98,8 @@ export default function Nav() {
               href={it.href}
               className={itemActive(path, it.href) ? "subitem active" : "subitem"}
             >
-              <span className="sublabel">{it.label}</span>
-              <span className="subdesc">{it.desc}</span>
+              <span className="sublabel">{t(it.label)}</span>
+              <span className="subdesc">{t(it.desc)}</span>
             </Link>
           ))}
         </div>

@@ -2,16 +2,16 @@
 
 import { useState } from "react";
 import { BASE_PATH } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
 
 export default function Login() {
+  const { t } = useLang();
   const [key, setKey] = useState("");
   return (
     <div className="card" style={{ maxWidth: 420, margin: "60px auto" }}>
       <div className="eyebrow"><span className="dot" /> AzTest</div>
-      <h2>Giriş açarı</h2>
-      <p className="card-desc">
-        Paylaşılan açarı daxil et. Açar yalnız bu brauzerdə saxlanılır.
-      </p>
+      <h2>{t("login.title")}</h2>
+      <p className="card-desc">{t("login.desc")}</p>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -19,7 +19,7 @@ export default function Login() {
           window.location.href = `${BASE_PATH}/`;
         }}
       >
-        <label className="lbl">API açarı</label>
+        <label className="lbl">{t("login.key_label")}</label>
         <input
           className="field"
           type="password"
@@ -29,7 +29,7 @@ export default function Login() {
           autoFocus
         />
         <div className="editor-actions">
-          <button className="btn" type="submit">Daxil ol</button>
+          <button className="btn" type="submit">{t("login.submit")}</button>
         </div>
       </form>
     </div>
