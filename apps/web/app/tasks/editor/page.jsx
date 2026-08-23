@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, patch, post } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
 
 const REGISTERS = ["formal", "neutral", "colloquial"];
 const BLANK = {
@@ -11,6 +12,7 @@ const BLANK = {
 };
 
 function Editor() {
+  const { t } = useLang();
   const params = useSearchParams();
   const router = useRouter();
   const id = params.get("id");
@@ -50,63 +52,62 @@ function Editor() {
   return (
     <form onSubmit={save}>
       <div className="hero">
-        <div className="eyebrow"><span className="dot" /> {id ? "Redaktə" : "Yeni"}</div>
-        <h1>{id ? form.title || "Tapşırıq" : "Yeni tapşırıq"}</h1>
+        <div className="eyebrow"><span className="dot" /> {id ? t("common.edit") : t("common.new")}</div>
+        <h1>{id ? form.title || t("common.task") : t("tasks.new_task")}</h1>
       </div>
 
       <div className="card">
         <div className="form-grid">
           <div>
-            <label className="lbl">Kod</label>
+            <label className="lbl">{t("common.code")}</label>
             <input className="field mono" value={form.code} onChange={set("code")} placeholder="RESMI-03" required />
-            <p className="hint">Qısa, unikal identifikator — nəticələrdə bu görünür.</p>
+            <p className="hint">{t("tasks.code_hint")}</p>
           </div>
           <div>
-            <label className="lbl">Başlıq</label>
+            <label className="lbl">{t("common.title")}</label>
             <input className="field" value={form.title} onChange={set("title")} required />
           </div>
           <div>
-            <label className="lbl">Kateqoriya</label>
+            <label className="lbl">{t("common.category")}</label>
             <input className="field" value={form.category} onChange={set("category")} list="cats" />
             <datalist id="cats">
               {categories.map((c) => <option key={c} value={c} />)}
             </datalist>
           </div>
           <div>
-            <label className="lbl">Registr</label>
+            <label className="lbl">{t("common.register")}</label>
             <select className="field" value={form.register} onChange={set("register")}>
               {REGISTERS.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div className="wide">
-            <label className="lbl">Prompt</label>
+            <label className="lbl">{t("common.prompt")}</label>
             <textarea className="field" rows={7} value={form.prompt} onChange={set("prompt")} required />
-            <p className="hint">
-              Modelə verilən mətn. Uzunluq, format və registr tələblərini prompta yazsan,
-              “təlimata uyğunluq” meyarı ölçülə bilən olur.
-            </p>
+            <p className="hint">{t("tasks.prompt_hint")}</p>
           </div>
           <div className="wide">
-            <label className="lbl">Sistem promptu (istəyə bağlı)</label>
+            <label className="lbl">{t("pg.system_prompt")}</label>
             <textarea className="field" rows={2} value={form.system_prompt || ""} onChange={set("system_prompt")} />
           </div>
           <div className="wide">
-            <label className="lbl">Qeyd — nə ölçülür</label>
+            <label className="lbl">{t("tasks.guidance")}</label>
             <input className="field" value={form.guidance || ""} onChange={set("guidance")} />
-            <p className="hint">Yalnız insanlar üçün: bu tapşırıq hansı bacarığı yoxlayır. Modelə göndərilmir.</p>
+            <p className="hint">{t("tasks.guidance_hint")}</p>
           </div>
           <div className="wide">
             <label className="pill" style={{ marginTop: 12 }}>
               <input type="checkbox" checked={!!form.enabled} onChange={set("enabled")} />
-              aktivdir (dəstlərdə işə salınır)
+              {t("tasks.enabled_label")}
             </label>
           </div>
         </div>
 
         {error ? <p className="error" style={{ marginTop: 12 }}>{error}</p> : null}
         <div className="editor-actions">
-          <button className="btn" disabled={busy}>{busy ? "Yazılır…" : "Yadda saxla"}</button>
-          <button type="button" className="btn ghost" onClick={() => router.push("/tasks")}>Ləğv et</button>
+          <button className="btn" disabled={busy}>{busy ? t("common.saving") : t("common.save")}</button>
+          <button type="button" className="btn ghost" onClick={() => router.push("/tasks")}>
+            {t("common.cancel")}
+          </button>
         </div>
       </div>
     </form>
@@ -115,7 +116,7 @@ function Editor() {
 
 export default function Page() {
   return (
-    <Suspense fallback={<p className="spinner">Yüklənir…</p>}>
+    <Suspense fallback={<p className="spinner">…</p>}>
       <Editor />
     </Suspense>
   );

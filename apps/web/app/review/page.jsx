@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRubric } from "../components";
+import { dimGuide, dimLabel, useLang } from "@/lib/i18n";
 import { api, post } from "@/lib/api";
 
 // Blind review: the queue endpoint never returns model_id, so nothing on this
 // screen can reveal which model wrote the text being rated.
 export default function Review() {
+  const { lang, t } = useLang();
   const dimensions = useRubric();
   const [rater, setRater] = useState("reviewer");
   const [queue, setQueue] = useState([]);
@@ -59,17 +61,14 @@ export default function Review() {
   return (
     <>
       <div className="hero">
-        <div className="eyebrow"><span className="dot" /> Kor qiymətləndirmə</div>
-        <h1>İnsan qiyməti</h1>
-        <p className="lede">
-          Model adı gizlidir. Bu ballar hakimi kalibrləmək üçündür — reytinq səhifəsində
-          hakim ilə insan arasındaki fərq göstərilir.
-        </p>
+        <div className="eyebrow"><span className="dot" /> {t("nav.review")}</div>
+        <h1>{t("review.h1")}</h1>
+        <p className="lede">{t("review.lede")}</p>
       </div>
 
       <div className="toolbar" style={{ marginBottom: 12 }}>
         <div>
-          <label className="lbl">Qiymətləndirən</label>
+          <label className="lbl">{t("review.rater")}</label>
           <input
             className="field"
             value={rater}
@@ -80,8 +79,8 @@ export default function Review() {
             }}
           />
         </div>
-        <span className="dim">Növbədə: {queue.length}</span>
-        <span className="dim">Bu sessiyada: {saved}</span>
+        <span className="dim">{t("review.in_queue")} {queue.length}</span>
+        <span className="dim">{t("review.this_session")} {saved}</span>
       </div>
 
       {error ? <p className="error">{error}</p> : null}
@@ -90,32 +89,32 @@ export default function Review() {
         <div className="card">
           <div className="empty-state">
             <div className="icon">✓</div>
-            <p>Növbə boşdur.</p>
-            <p className="hint">Bu ad altında qiymətləndirilməmiş cavab qalmayıb.</p>
+            <p>{t("review.queue_empty")}</p>
+            <p className="hint">{t("review.queue_empty_hint")}</p>
           </div>
         </div>
       ) : (
         <>
           <div className="card">
-            <h2>Tapşırıq <span className="dim mono">{current.task_code}</span></h2>
+            <h2>{t("common.task")} <span className="dim mono">{current.task_code}</span></h2>
             <p className="muted" style={{ whiteSpace: "pre-wrap" }}>{current.prompt}</p>
           </div>
 
           <div className="card primary">
-            <h2>Cavab</h2>
+            <h2>{t("common.answer")}</h2>
             <div className="outcol">
               <div className="body">{current.output}</div>
             </div>
           </div>
 
           <form className="card" onSubmit={submit}>
-            <h2>Qiymət (1-5)</h2>
+            <h2>{t("review.score_1_5")}</h2>
             <div className="rate">
               {dimensions.map((d) => (
                 <div key={d.key} style={{ display: "contents" }}>
                   <div className="dim">
-                    {d.label}
-                    <small>{d.guide}</small>
+                    {dimLabel(d, lang)}
+                    <small>{dimGuide(d, lang)}</small>
                   </div>
                   <div className="scale">
                     {[1, 2, 3, 4, 5].map((n) => (
@@ -134,19 +133,19 @@ export default function Review() {
               ))}
             </div>
 
-            <label className="lbl">Qeyd (istəyə bağlı)</label>
+            <label className="lbl">{t("common.hint_note")}</label>
             <textarea className="field" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
 
             <div className="editor-actions">
               <button className="btn" disabled={busy || !complete}>
-                {busy ? "Yazılır…" : "Qiyməti yaz və növbətiyə keç"}
+                {busy ? t("common.saving") : t("review.submit")}
               </button>
               <button
                 type="button"
                 className="btn ghost"
                 onClick={() => setIndex(Math.min(index + 1, queue.length - 1))}
               >
-                Keç
+                {t("review.skip")}
               </button>
             </div>
           </form>

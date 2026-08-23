@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Score from "../score";
 import { api, BASE_PATH, del, fmtCost, fmtWhen, runChip } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
 
 export default function Runs() {
+  const { t } = useLang();
   const [runs, setRuns] = useState([]);
   const [kind, setKind] = useState("");
   const [error, setError] = useState("");
@@ -24,9 +26,8 @@ export default function Runs() {
 
   async function remove(run, e) {
     e.stopPropagation();
-    if (!confirm(`"${run.label || run.suite_name}" run-u və bütün cavabları silinsin?\n\n` +
-                 "Reytinq bütün run-ların ortalamasıdır — səhv konfiqurasiya ilə " +
-                 "aparılmış run silinməsə, model həmişəlik pis görünür.")) return;
+    if (!confirm(`"${run.label || run.suite_name}" — ${t("runs.confirm_delete_1")}\n\n` +
+                 t("runs.confirm_delete_2"))) return;
     try {
       await del(`/runs/${run.id}`);
       setRuns(runs.filter((r) => r.id !== run.id));
@@ -38,17 +39,17 @@ export default function Runs() {
   return (
     <>
       <div className="hero">
-        <div className="eyebrow"><span className="dot" /> İşə salmalar</div>
-        <h1>Run tarixçəsi</h1>
-        <p className="lede">Hər run bir dəstin (və ya ad-hoc promptun) seçilmiş modellərdə icrasıdır.</p>
+        <div className="eyebrow"><span className="dot" /> {t("nav.runs")}</div>
+        <h1>{t("runs.h1")}</h1>
+        <p className="lede">{t("runs.lede")}</p>
       </div>
 
       <div className="toolbar" style={{ marginBottom: 12 }}>
         <div>
-          <label className="lbl">Tip</label>
+          <label className="lbl">{t("runs.type")}</label>
           <select className="field" value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="">Hamısı</option>
-            <option value="suite">Dəst</option>
+            <option value="">{t("common.all")}</option>
+            <option value="suite">{t("runs.suite")}</option>
             <option value="playground">Playground</option>
           </select>
         </div>
@@ -60,8 +61,8 @@ export default function Runs() {
         {runs.length === 0 ? (
           <div className="empty-state">
             <div className="icon">◷</div>
-            <p>Hələ run yoxdur.</p>
-            <p className="hint">Dəstlər səhifəsindən bir dəst işə sal.</p>
+            <p>{t("runs.empty")}</p>
+            <p className="hint">{t("runs.empty_hint")}</p>
           </div>
         ) : (
           <table className="data">
@@ -86,7 +87,9 @@ export default function Runs() {
                   <td className="dim">{fmtWhen(r.created_at)}</td>
                   <td>
                     {r.status === "RUNNING" || r.status === "QUEUED" ? null : (
-                      <button className="btn small ghost" onClick={(e) => remove(r, e)}>Sil</button>
+                      <button className="btn small ghost" onClick={(e) => remove(r, e)}>
+                        {t("common.delete")}
+                      </button>
                     )}
                   </td>
                 </tr>
