@@ -137,7 +137,7 @@ async def _generate_and_score(db, client, gen, run, roster, jcfg) -> None:
             gen["prompt"],
             system=gen["system_prompt"] or None,
             temperature=_num(model_cfg.get("temperature"), run["temperature"]),
-            max_tokens=int(model_cfg.get("max_output_tokens") or run["max_output_tokens"] or 4000),
+            max_tokens=int(model_cfg.get("max_output_tokens") or run["max_output_tokens"] or 12000),
             reasoning_effort=model_cfg.get("reasoning_effort") or None,
             extra_params=model_cfg.get("extra_params") or None,
         )

@@ -353,6 +353,26 @@ class Database:
         )
 
     # ---- leaderboard ----
+    async def excluded_summary(self, *, run_id: str | None = None) -> list[dict]:
+        """Answers that could not be scored, grouped by model and reason.
+
+        A report that silently drops these would overstate coverage: a model
+        with two usable answers out of six is not comparable to one with six.
+        """
+        clause, args = "", []
+        if run_id:
+            args.append(_uid(run_id))
+            clause = "and g.run_id = $1"
+        return await self.fetch(
+            f"""select g.model_id, count(*)::int as excluded,
+                   count(*) filter (where g.finish_reason = 'length')::int as truncated,
+                   min(g.error) as example
+               from generations g
+               where g.status = 'ERROR' {clause}
+               group by g.model_id order by excluded desc""",
+            *args,
+        )
+
     async def leaderboard(self, *, suite_id: str | None = None, run_id: str | None = None) -> list[dict]:
         clauses, args = ["g.status = 'DONE'"], []
         if run_id:
@@ -386,13 +406,19 @@ class Database:
             *args,
         )
 
-    async def dimension_averages(self, *, suite_id: str | None = None) -> list[dict]:
+    async def dimension_averages(
+        self, *, suite_id: str | None = None, run_id: str | None = None
+    ) -> list[dict]:
         """Per-model average for each rubric dimension, straight out of the
         stored judge JSON — no separate table to keep in step."""
-        clause, args = "", []
+        clauses, args = [], []
         if suite_id:
             args.append(_uid(suite_id))
-            clause = "and r.suite_id = $1"
+            clauses.append(f"and r.suite_id = ${len(args)}")
+        if run_id:
+            args.append(_uid(run_id))
+            clauses.append(f"and g.run_id = ${len(args)}")
+        clause = " ".join(clauses)
         return await self.fetch(
             f"""select g.model_id, d.key as dimension,
                    round(avg((d.value)::numeric), 2) as score
@@ -404,11 +430,17 @@ class Database:
             *args,
         )
 
-    async def error_taxonomy(self, *, model_id: str | None = None, limit: int = 12) -> list[dict]:
-        clause, args = "", [limit]
+    async def error_taxonomy(
+        self, *, model_id: str | None = None, run_id: str | None = None, limit: int = 12
+    ) -> list[dict]:
+        clauses, args = [], [limit]
         if model_id:
             args.append(model_id)
-            clause = "and g.model_id = $2"
+            clauses.append(f"and g.model_id = ${len(args)}")
+        if run_id:
+            args.append(_uid(run_id))
+            clauses.append(f"and g.run_id = ${len(args)}")
+        clause = " ".join(clauses)
         return await self.fetch(
             f"""select lower(e ->> 'type') as error_type, count(*)::int as hits
                from generations g

@@ -32,6 +32,12 @@ export async function api(path, opts = {}) {
   return res.json();
 }
 
+// Reports open in a browser tab, which cannot send an auth header — these
+// URLs carry the key as a query parameter instead.
+export function reportUrl(path) {
+  return `${API}/api/v1/reports${path}${path.includes("?") ? "&" : "?"}key=${encodeURIComponent(getKey())}`;
+}
+
 export const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body) });
 export const patch = (path, body) => api(path, { method: "PATCH", body: JSON.stringify(body) });
 export const put = (path, body) => api(path, { method: "PUT", body: JSON.stringify(body) });

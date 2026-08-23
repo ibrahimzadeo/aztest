@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import Score from "../../score";
 import { Flags, JudgePanel, Metrics, OutputColumn, useRubric } from "../../components";
-import { api, fmtCost, fmtMs, fmtWhen, post, runChip } from "@/lib/api";
+import { api, fmtCost, fmtMs, fmtWhen, post, reportUrl, runChip } from "@/lib/api";
 
 export default function RunDetail() {
   const { id } = useParams();
@@ -69,6 +69,9 @@ export default function RunDetail() {
           <button className="btn small ghost" onClick={cancel}>Ləğv et</button>
         ) : null}
         <Link className="btn small ghost" href={`/leaderboard?run_id=${run.id}`}>Bu run üzrə reytinq</Link>
+        <a className="btn small" href={reportUrl(`/runs/${run.id}`)} target="_blank" rel="noreferrer">
+          A4 hesabat
+        </a>
       </div>
 
       <div className="tiles">
