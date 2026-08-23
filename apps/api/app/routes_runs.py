@@ -143,6 +143,23 @@ async def cancel_run(run_id: str) -> dict:
     return {"status": "CANCELLED"}
 
 
+@router.delete("/runs/{run_id}")
+async def delete_run(run_id: str) -> dict:
+    """Discard a run and its answers. The leaderboard aggregates every run, so
+    a run made under a broken configuration has to be removable — otherwise a
+    model that was never given room to answer looks permanently bad."""
+    run = await db.run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="run not found")
+    if run["status"] in ("QUEUED", "RUNNING"):
+        raise HTTPException(
+            status_code=409,
+            detail="cancel the run before deleting it",
+        )
+    await db.delete_run(run_id)
+    return {"deleted": run_id}
+
+
 @router.get("/generations/{gen_id}")
 async def get_generation(gen_id: str) -> dict:
     gen = await db.generation(gen_id)

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Score from "../score";
-import { api, BASE_PATH, fmtCost, fmtWhen, runChip } from "@/lib/api";
+import { api, BASE_PATH, del, fmtCost, fmtWhen, runChip } from "@/lib/api";
 
 export default function Runs() {
   const [runs, setRuns] = useState([]);
@@ -21,6 +21,19 @@ export default function Runs() {
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, [kind]);
+
+  async function remove(run, e) {
+    e.stopPropagation();
+    if (!confirm(`"${run.label || run.suite_name}" run-u və bütün cavabları silinsin?\n\n` +
+                 "Reytinq bütün run-ların ortalamasıdır — səhv konfiqurasiya ilə " +
+                 "aparılmış run silinməsə, model həmişəlik pis görünür.")) return;
+    try {
+      await del(`/runs/${run.id}`);
+      setRuns(runs.filter((r) => r.id !== run.id));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
 
   return (
     <>
@@ -55,7 +68,7 @@ export default function Runs() {
             <thead>
               <tr>
                 <th>Başlıq</th><th>Status</th><th>Tərəqqi</th><th>Orta bal</th>
-                <th>Model</th><th>Xərc</th><th>Tarix</th>
+                <th>Model</th><th>Xərc</th><th>Tarix</th><th />
               </tr>
             </thead>
             <tbody>
@@ -71,6 +84,11 @@ export default function Runs() {
                   <td className="mono dim">{(r.models || []).length}</td>
                   <td className="mono">{fmtCost(r.cost)}</td>
                   <td className="dim">{fmtWhen(r.created_at)}</td>
+                  <td>
+                    {r.status === "RUNNING" || r.status === "QUEUED" ? null : (
+                      <button className="btn small ghost" onClick={(e) => remove(r, e)}>Sil</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

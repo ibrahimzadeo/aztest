@@ -10,6 +10,7 @@ model list — the marketing page under-reports it.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import re
@@ -23,7 +24,9 @@ log = logging.getLogger("azbench.nexum")
 DEFAULT_BASE_URL = "https://dialagram.me/router/v1"
 # /models has been measured at ~18s; anything under 20s times out spuriously.
 CATALOG_TIMEOUT_S = 45.0
-CHAT_TIMEOUT_S = 300.0
+# Reasoning models here have run 165s and 9k output tokens. The read timeout
+# applies per chunk while streaming, so it bounds a stall, not the answer.
+CHAT_TIMEOUT = httpx.Timeout(connect=30.0, read=180.0, write=30.0, pool=30.0)
 # Nexum 429s at concurrency 4, so 3 is the ceiling for in-flight requests.
 SAFE_CONCURRENCY = 3
 
@@ -81,11 +84,20 @@ class Completion:
 class NexumClient:
     """Thin async client. One instance per process; it owns an httpx pool."""
 
-    def __init__(self, api_key: str, base_url: str = DEFAULT_BASE_URL):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = DEFAULT_BASE_URL,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ):
         if not api_key:
             raise ProviderError("no API key configured — set it in Settings")
         self.api_key = api_key
         self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
+        # Injectable so the streaming path can be tested against a fake SSE
+        # endpoint rather than by mocking this class's internals.
+        self._transport = transport
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -95,7 +107,7 @@ class NexumClient:
 
     async def list_models(self) -> list[dict]:
         """Return the raw /models entries, sorted by id."""
-        async with httpx.AsyncClient(timeout=CATALOG_TIMEOUT_S) as client:
+        async with httpx.AsyncClient(timeout=CATALOG_TIMEOUT_S, transport=self._transport) as client:
             try:
                 res = await client.get(f"{self.base_url}/models", headers=self._headers())
             except httpx.RequestError as exc:
@@ -128,39 +140,104 @@ class NexumClient:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
-        payload: dict = {"model": model, "messages": messages}
+        # Always stream. The router abandons a slow non-stream response with
+        # "DialagramRouter ran out of time ... Retry with stream", which is
+        # exactly what the slowest thinking models hit.
+        payload: dict = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
         if temperature is not None:
             payload["temperature"] = temperature
         if max_tokens:
             payload["max_tokens"] = max_tokens
 
         last: ProviderError | None = None
-        async with httpx.AsyncClient(timeout=CHAT_TIMEOUT_S) as client:
+        async with httpx.AsyncClient(timeout=CHAT_TIMEOUT, transport=self._transport) as client:
             for attempt in range(1, attempts + 1):
                 started = time.monotonic()
                 try:
-                    res = await client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers=self._headers(),
-                        json=payload,
-                    )
+                    return await self._stream_completion(client, payload, model, started)
+                except ProviderError as exc:
+                    last = exc
                 except httpx.RequestError as exc:
                     last = ProviderError(f"request failed: {exc}", retryable=True)
-                else:
-                    if res.status_code == 200:
-                        return _parse_completion(res.json(), model, started)
-                    retryable = res.status_code == 429 or res.status_code >= 500
-                    last = ProviderError(
-                        f"{res.status_code}: {res.text[:300]}",
-                        status=res.status_code,
-                        retryable=retryable,
-                    )
                 if not last.retryable or attempt == attempts:
                     raise last
                 delay = min(30.0, 2.0 * (2 ** (attempt - 1))) + random.uniform(0, 1.5)
                 log.warning("%s attempt %d failed (%s); retry in %.1fs", model, attempt, last, delay)
                 await asyncio.sleep(delay)
         raise last or ProviderError("exhausted retries")
+
+    async def _stream_completion(
+        self, client: httpx.AsyncClient, payload: dict, model: str, started: float
+    ) -> Completion:
+        """Consume one SSE stream into a Completion.
+
+        Streaming is not an optimisation here: the router times out on slow
+        non-stream responses, and a thinking model is exactly the case that is
+        slow. Reasoning deltas are counted but never concatenated into the
+        answer — grading the scratchpad would measure the wrong text.
+        """
+        chunks: list[str] = []
+        finish_reason = ""
+        usage: dict = {}
+        had_reasoning = False
+        served_model = ""
+
+        async with client.stream(
+            "POST", f"{self.base_url}/chat/completions", headers=self._headers(), json=payload
+        ) as res:
+            if res.status_code != 200:
+                body = (await res.aread()).decode(errors="replace")
+                raise ProviderError(
+                    f"{res.status_code}: {body[:300]}",
+                    status=res.status_code,
+                    retryable=res.status_code == 429 or res.status_code >= 500,
+                )
+            async for line in res.aiter_lines():
+                line = line.strip()
+                if not line or line.startswith(":"):
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    event = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(event.get("error"), dict):
+                    message = str(event["error"].get("message", event["error"]))[:300]
+                    # The router's own give-up message is worth retrying.
+                    raise ProviderError(f"provider error: {message}", retryable=True)
+                served_model = event.get("model") or served_model
+                if event.get("usage"):
+                    usage = event["usage"]
+                for choice in event.get("choices") or []:
+                    delta = choice.get("delta") or {}
+                    if delta.get("content"):
+                        chunks.append(str(delta["content"]))
+                    if delta.get("reasoning") or delta.get("reasoning_content"):
+                        had_reasoning = True
+                    if choice.get("finish_reason"):
+                        finish_reason = choice["finish_reason"]
+
+        details = usage.get("completion_tokens_details") or {}
+        return Completion(
+            text=_strip_thinking("".join(chunks)),
+            prompt_tokens=int(usage.get("prompt_tokens") or 0),
+            completion_tokens=int(usage.get("completion_tokens") or 0),
+            latency_ms=int((time.monotonic() - started) * 1000),
+            model=served_model or model,
+            finish_reason=finish_reason,
+            reasoning_tokens=int(details.get("reasoning_tokens") or 0),
+            had_reasoning=had_reasoning,
+            raw_usage=usage,
+        )
 
 
 # Some models emit their scratchpad inline in the content instead of in a
@@ -170,15 +247,18 @@ _THINK_BLOCK = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.S | re.I)
 _UNCLOSED_THINK = re.compile(r"^\s*<(think|thinking|reasoning)>.*$", re.S | re.I)
 
 
+def _strip_thinking(text: str) -> str:
+    text = _THINK_BLOCK.sub("", text or "")
+    return _UNCLOSED_THINK.sub("", text).strip()
+
+
 def _parse_completion(body: dict, model: str, started: float) -> Completion:
     latency_ms = int((time.monotonic() - started) * 1000)
     choices = body.get("choices") or []
     if not choices:
         raise ProviderError(f"no choices in response: {str(body)[:300]}")
     message = choices[0].get("message") or {}
-    text = str(message.get("content") or "")
-    text = _THINK_BLOCK.sub("", text)
-    text = _UNCLOSED_THINK.sub("", text).strip()
+    text = _strip_thinking(str(message.get("content") or ""))
 
     # Reasoning goes in `reasoning` (OpenAI-compatible) or `reasoning_content`
     # (DeepSeek). It is NEVER used as the answer: a writing benchmark that
