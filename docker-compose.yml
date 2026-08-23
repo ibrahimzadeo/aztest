@@ -1,0 +1,116 @@
+# AzTest — Coolify deploy config (coolify.adventa.az).
+#
+# Rules that this file follows deliberately:
+#   - NO host ports. Coolify's Traefik routes domains to internal ports;
+#     publishing a host port here causes "address already in use".
+#     Local-dev port mappings live in docker-compose.override.yml, which
+#     Coolify ignores (it always runs with an explicit -f docker-compose.yml).
+#   - Domains are wired with SERVICE_FQDN_<SERVICE>_<PORT>, set in Coolify's
+#     UI as bare hostnames (no scheme, no spaces).
+#   - No deploy.replicas — Coolify injects container_name and Compose rejects
+#     the two together. Scale the worker from the Coolify UI instead.
+
+services:
+  aztest-web:
+    build:
+      context: ./apps/web
+      args:
+        # Baked into the client bundle — mark as Build Variable in Coolify.
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+        - NEXT_PUBLIC_PROVIDER_LABEL=${NEXT_PUBLIC_PROVIDER_LABEL:-nexum router}
+    expose:
+      - "3000"
+    environment:
+      - SERVICE_FQDN_AZTEST_WEB_3000
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+    depends_on:
+      - aztest-api
+    restart: unless-stopped
+
+  # One-shot migrator: owns the schema and the starter task seed. The API and
+  # the worker wait for it (service_completed_successfully) so nothing queries
+  # a table before it exists and two containers never race the migration.
+  aztest-migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["./migrate.sh"]
+    environment:
+      - DATABASE_URL=postgresql://aztest:${POSTGRES_PASSWORD}@aztest-postgres:5432/aztest
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    depends_on:
+      - aztest-postgres
+    restart: "no"
+
+  aztest-api:
+    build:
+      # Repo root: the image needs /packages too.
+      context: .
+      dockerfile: apps/api/Dockerfile
+    expose:
+      - "8000"
+    environment:
+      - SERVICE_FQDN_AZTEST_API_8000
+      - DATABASE_URL=postgresql://aztest:${POSTGRES_PASSWORD}@aztest-postgres:5432/aztest
+      - REDIS_URL=redis://aztest-redis:6379/0
+      # Encrypts the provider API key that the UI stores in the database.
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      # Shared UI/API key — empty disables auth (local dev only).
+      - AZTEST_API_KEY=${AZTEST_API_KEY:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      # Fallbacks only: the real provider config is set in the UI and stored
+      # in the database, so a redeploy never resets it.
+      - NEXUM_BASE_URL=${NEXUM_BASE_URL:-https://dialagram.me/router/v1}
+      - NEXUM_API_KEY=${NEXUM_API_KEY:-}
+      - JUDGE_MODEL=${JUDGE_MODEL:-}
+    depends_on:
+      aztest-postgres:
+        condition: service_started
+      aztest-redis:
+        condition: service_started
+      aztest-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  aztest-worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://aztest:${POSTGRES_PASSWORD}@aztest-postgres:5432/aztest
+      - REDIS_URL=redis://aztest-redis:6379/0
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      # Hard ceiling on in-flight provider requests. Nexum Router returns HTTP
+      # 429 at concurrency 4, and a 429 would land in the leaderboard as a
+      # model failure — so 3 is the ceiling, not a starting point. If the
+      # worker is scaled to N instances, this is per instance.
+      - MAX_CONCURRENCY=${MAX_CONCURRENCY:-3}
+      - NEXUM_BASE_URL=${NEXUM_BASE_URL:-https://dialagram.me/router/v1}
+      - NEXUM_API_KEY=${NEXUM_API_KEY:-}
+    depends_on:
+      aztest-postgres:
+        condition: service_started
+      aztest-redis:
+        condition: service_started
+      aztest-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  aztest-postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=aztest
+      # Applied only on first volume init — pick the final value before the
+      # first deploy; changing it later needs a volume reset.
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=aztest
+    volumes:
+      - aztest-pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  aztest-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+volumes:
+  aztest-pgdata:
