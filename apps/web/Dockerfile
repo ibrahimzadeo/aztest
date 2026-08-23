@@ -2,8 +2,11 @@
 FROM node:20-alpine AS build
 
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+# Lockfile + `npm ci`: a deterministic, resolver-free install. `npm install`
+# re-resolves the tree on every build, which is what timed out the first
+# Coolify build with no error output.
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY . .
 
 # Baked into the client bundle at build time — in Coolify these must be marked

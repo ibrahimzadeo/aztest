@@ -1,0 +1,8 @@
+# Build context is this directory. Keeping node_modules and .next out matters:
+# `COPY . .` runs after `npm ci`, so a local node_modules would overwrite the
+# installed one, and a local .next would stand in for output the build should
+# have produced.
+node_modules
+.next
+npm-debug.log
+.DS_Store
