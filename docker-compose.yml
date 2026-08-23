@@ -15,14 +15,18 @@ services:
     build:
       context: ./apps/web
       args:
-        # Baked into the client bundle — mark as Build Variable in Coolify.
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+        # Empty by default: the UI calls /api/v1 same-origin and Next.js
+        # rewrites that to aztest-api. Only set this to point the bundle at a
+        # different host, and mark it a Build Variable in Coolify if you do.
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
         - NEXT_PUBLIC_PROVIDER_LABEL=${NEXT_PUBLIC_PROVIDER_LABEL:-nexum router}
     expose:
       - "3000"
     environment:
       - SERVICE_FQDN_AZTEST_WEB_3000
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+      # Runtime target for the same-origin /api proxy (see apps/web/next.config.mjs).
+      - API_INTERNAL_URL=${API_INTERNAL_URL:-http://aztest-api:8000}
     depends_on:
       - aztest-api
     restart: unless-stopped

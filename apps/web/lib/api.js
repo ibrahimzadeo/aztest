@@ -1,4 +1,7 @@
-export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Empty = same origin: requests go to /api/v1/... and Next.js rewrites them
+// to the API container. Set NEXT_PUBLIC_API_URL only to point a local dev UI
+// at a remote API.
+export const API = process.env.NEXT_PUBLIC_API_URL || "";
 export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 export function getKey() {
