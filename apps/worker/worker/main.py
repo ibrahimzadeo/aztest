@@ -70,6 +70,11 @@ async def execute_run(db: Database, run_id: str) -> None:
         log.error("run %s: %s", run_id, exc)
         return
 
+    # A previous worker may have died mid-run (a redeploy, usually), leaving
+    # rows in RUNNING that nothing will ever finish.
+    reclaimed = await db.reset_inflight(run_id)
+    if reclaimed:
+        log.info("run %s: reset %d abandoned generation(s) to PENDING", run_id, reclaimed)
     gens = [g for g in await db.generations(run_id) if g["status"] == "PENDING"]
     concurrency = max(1, min(int(run["concurrency"] or MAX_CONCURRENCY), MAX_CONCURRENCY))
     log.info("run %s: %d generation(s) at concurrency %d", run_id, len(gens), concurrency)
