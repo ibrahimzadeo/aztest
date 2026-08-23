@@ -169,6 +169,13 @@ export default function Settings() {
           </label>
         </div>
         <div className="caveat">
+          <strong>Düşünən (thinking) modellər:</strong> onlar cavabı yazmağa başlamadan
+          əvvəl minlərlə token “düşünməyə” xərcləyir. Maks output token az olsa, model
+          heç nə qaytarmır — bu, pis yazı deyil, konfiqurasiya problemidir və nəticələrdə
+          “xəta” kimi göstərilir. Belə modellər üçün Modellər səhifəsində fərdi, daha
+          böyük hədd təyin et.
+        </div>
+        <div className="caveat">
           <strong>Paralellik {settings.safe_concurrency}-dən yuxarı qaldırılmamalıdır:</strong> Nexum
           Router 4 eyni vaxtlı sorğuda HTTP 429 qaytarır. Worker hər halda öz həddini tətbiq edir,
           amma 429-lar cavabları xətaya çevirib nəticələri təhrif edir.

@@ -130,6 +130,11 @@ export function OutputColumn({ gen, onOpen }) {
         <span className="spacer" />
         {running ? <span className="chip run">{gen.status === "RUNNING" ? "işləyir" : "gözləyir"}</span> : null}
         {gen.status === "ERROR" ? <span className="chip fail">xəta</span> : null}
+        {gen.finish_reason === "length" && gen.status === "DONE" ? (
+          <span className="chip warn" title="Cavab token həddində kəsilib — modelin 'Maks output token' dəyərini artır">
+            kəsilib
+          </span>
+        ) : null}
         {gen.overall_score !== null && gen.overall_score !== undefined ? (
           <Score value={gen.overall_score} width={92} />
         ) : null}
@@ -151,6 +156,7 @@ export function OutputColumn({ gen, onOpen }) {
       <div className="foot">
         <span className="mono">{fmtMs(gen.latency_ms)}</span>
         <span className="mono">{gen.completion_tokens} token</span>
+        {gen.finish_reason ? <span className="mono dim">{gen.finish_reason}</span> : null}
         <span className="mono">{fmtCost(gen.cost)}</span>
         {onOpen ? (
           <button className="btn small ghost" style={{ marginLeft: "auto" }} onClick={() => onOpen(gen)}>
