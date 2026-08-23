@@ -52,12 +52,16 @@ uncalibrated** — the UI says so where it matters.
 
 ```
 aztest-web       Next.js 15 (standalone)     :3000   public domain
-aztest-api       FastAPI                     :8000   public domain
+aztest-api       FastAPI                     :8000   internal (proxied at /api)
 aztest-worker    queue consumer                      no port
 aztest-migrate   one-shot: schema + seed              runs to completion
 aztest-postgres  postgres:16-alpine
 aztest-redis     redis:7-alpine
 ```
+
+The web container proxies `/api/*` to the API container, so the whole app lives
+on one domain: no CORS, no API hostname baked into the client bundle, and no
+authenticated surface of its own facing the internet.
 
 The API only *plans* a run — it writes one PENDING generation per task×model and
 pushes the run id to Redis. The worker generates, checks and judges with bounded
@@ -93,9 +97,8 @@ Docker-compose resource, deploy branch `main` — pushing to `main` *is* the dep
    | `POSTGRES_PASSWORD` | alphanumeric only; applied on first volume init and fixed after that |
    | `ENCRYPTION_KEY` | any passphrase; encrypts the provider key stored by the UI. **Changing it makes the stored key unreadable.** |
    | `AZTEST_API_KEY` | shared UI/API key; empty disables auth |
-   | `NEXT_PUBLIC_API_URL` | `https://<api domain>` — **mark as Build Variable** (baked into the bundle) |
-   | `SERVICE_FQDN_AZTEST_WEB_3000` | bare hostname, no scheme |
-   | `SERVICE_FQDN_AZTEST_API_8000` | bare hostname, no scheme |
+   | `SERVICE_FQDN_AZTEST_WEB_3000` | bare hostname, no scheme. The only domain the app needs. |
+   | `NEXT_PUBLIC_API_URL` | leave **unset** — the UI calls `/api/v1` same-origin and Next.js proxies it to `aztest-api` |
    | `MAX_CONCURRENCY` | leave at 3 |
 
 3. Deploy. `aztest-migrate` applies the schema and seeds the task library; the
