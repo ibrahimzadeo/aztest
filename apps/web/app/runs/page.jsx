@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Score from "../score";
-import { api, fmtCost, fmtWhen, runChip } from "@/lib/api";
+import { api, BASE_PATH, fmtCost, fmtWhen, runChip } from "@/lib/api";
 
 export default function Runs() {
   const [runs, setRuns] = useState([]);
@@ -60,7 +60,7 @@ export default function Runs() {
             </thead>
             <tbody>
               {runs.map((r) => (
-                <tr key={r.id} className="clickable" onClick={() => (window.location.href = `/runs/${r.id}`)}>
+                <tr key={r.id} className="clickable" onClick={() => (window.location.href = `${BASE_PATH}/runs/${r.id}`)}>
                   <td>
                     <Link href={`/runs/${r.id}`} style={{ color: "var(--accent)" }}>{r.label || r.suite_name || "run"}</Link>
                     <span className="dim" style={{ marginLeft: 8, fontSize: 11 }}>{r.kind}</span>

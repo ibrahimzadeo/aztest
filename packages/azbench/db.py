@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from decimal import Decimal
 
 import asyncpg
 
@@ -94,10 +95,10 @@ class Database:
             f["model_id"],
             f.get("label") or "",
             bool(f.get("enabled", True)),
-            f.get("input_price_per_m") or 0,
-            f.get("output_price_per_m") or 0,
+            _dec(f.get("input_price_per_m") or 0),
+            _dec(f.get("output_price_per_m") or 0),
             f.get("max_output_tokens"),
-            f.get("temperature"),
+            _dec(f.get("temperature")),
             f.get("notes") or "",
         )
 
@@ -202,7 +203,7 @@ class Database:
             _uid(f["suite_id"]) if f.get("suite_id") else None,
             f.get("models") or [], f.get("judge_model") or "",
             bool(f.get("judge_enabled", True)), int(f.get("concurrency") or 3),
-            f.get("temperature"), f.get("max_output_tokens"),
+            _dec(f.get("temperature")), f.get("max_output_tokens"),
         )
 
     async def runs(self, limit: int = 50, kind: str | None = None) -> list[dict]:
@@ -267,6 +268,18 @@ class Database:
     async def generation(self, gen_id: str) -> dict | None:
         return await self.fetchrow("select * from generations where id = $1", _uid(gen_id))
 
+    async def reset_inflight(self, run_id: str) -> int:
+        """Return generations abandoned mid-flight to PENDING.
+
+        A worker killed by a redeploy leaves rows in RUNNING; without this the
+        reclaimed run would skip them and report itself complete.
+        """
+        result = await self.execute(
+            "update generations set status='PENDING' where run_id = $1 and status='RUNNING'",
+            _uid(run_id),
+        )
+        return int(result.split()[-1]) if result else 0
+
     async def mark_generation_running(self, gen_id) -> None:
         await self.execute("update generations set status='RUNNING' where id = $1", _uid(gen_id))
 
@@ -278,7 +291,7 @@ class Database:
                where id=$1""",
             _uid(gen_id), f["status"], f.get("output") or "", f.get("error"),
             f.get("prompt_tokens") or 0, f.get("completion_tokens") or 0,
-            f.get("cost") or 0, f.get("latency_ms") or 0, f.get("checks"),
+            _dec(f.get("cost") or 0), f.get("latency_ms") or 0, f.get("checks"),
             f.get("mechanics_score"),
         )
 
@@ -287,8 +300,8 @@ class Database:
         await self.execute(
             """update generations set judge=$2, judge_status=$3, judge_error=$4,
                    judge_cost=$5, overall_score=$6 where id=$1""",
-            _uid(gen_id), judge, status, error, cost,
-            (judge or {}).get("overall"),
+            _uid(gen_id), judge, status, error, _dec(cost),
+            _dec((judge or {}).get("overall")),
         )
 
     async def set_run_totals(self, run_id: str, totals: dict) -> None:
@@ -304,7 +317,7 @@ class Database:
                    scores = excluded.scores, overall = excluded.overall,
                    comment = excluded.comment, created_at = now()
                returning *""",
-            _uid(gen_id), rater, scores, overall_score, comment or "",
+            _uid(gen_id), rater, scores, _dec(overall_score), comment or "",
         )
 
     async def ratings_for(self, gen_id: str) -> list[dict]:
@@ -335,19 +348,25 @@ class Database:
         if suite_id:
             args.append(_uid(suite_id))
             clauses.append(f"r.suite_id = ${len(args)}")
+        # Human ratings are pre-aggregated per generation: joining them row by
+        # row would count one answer several times and pull every average
+        # toward whichever answers happen to have been reviewed twice.
         return await self.fetch(
             f"""select g.model_id,
                    count(*)::int as generations,
                    round(avg(g.overall_score)::numeric, 1) as judge_score,
                    round(avg(g.mechanics_score)::numeric, 1) as mechanics_score,
                    round(avg(h.overall)::numeric, 1) as human_score,
-                   count(h.id)::int as human_ratings,
+                   count(h.generation_id)::int as human_ratings,
                    round(avg(g.latency_ms)::numeric, 0) as avg_latency_ms,
                    coalesce(sum(g.cost + coalesce(g.judge_cost,0)), 0) as cost,
                    round(avg(g.completion_tokens)::numeric, 0) as avg_output_tokens
                from generations g
                join runs r on r.id = g.run_id
-               left join human_ratings h on h.generation_id = g.id
+               left join (
+                   select generation_id, avg(overall) as overall
+                   from human_ratings group by generation_id
+               ) h on h.generation_id = g.id
                where {' and '.join(clauses)}
                group by g.model_id
                order by judge_score desc nulls last""",
@@ -389,3 +408,13 @@ class Database:
 
 def _uid(value):
     return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+
+
+def _dec(value):
+    """asyncpg encodes `numeric` from Decimal and rejects a bare float, so
+    every price, cost and score has to be converted on the way in."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
