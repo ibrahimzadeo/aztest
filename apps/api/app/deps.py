@@ -84,5 +84,8 @@ async def run_defaults() -> dict:
         # default, not a starting point to raise casually.
         "concurrency": int(cfg.get("concurrency") or 3),
         "temperature": cfg.get("temperature", 0.7),
-        "max_output_tokens": int(cfg.get("max_output_tokens") or 1500),
+        # Reasoning models spend completion tokens thinking before they write
+        # anything, so a tight cap returns an empty answer rather than a short
+        # one. Per-model overrides live in the model roster.
+        "max_output_tokens": int(cfg.get("max_output_tokens") or 4000),
     }

@@ -105,7 +105,15 @@ async def judge_output(
     except ProviderError as exc:
         raise JudgeError(f"judge call failed: {exc}") from exc
 
-    data = _extract_json(completion.text)
+    try:
+        data = _extract_json(completion.text)
+    except JudgeError:
+        if completion.truncated:
+            raise JudgeError(
+                f"judge response was cut off at {completion.completion_tokens} tokens before "
+                "the JSON was complete — raise the judge's max output tokens in Settings"
+            ) from None
+        raise
     scores = {}
     for key in DIMENSION_KEYS:
         raw = (data.get("scores") or {}).get(key)

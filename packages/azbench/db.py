@@ -287,12 +287,12 @@ class Database:
         await self.execute(
             """update generations set status=$2, output=$3, error=$4, prompt_tokens=$5,
                    completion_tokens=$6, cost=$7, latency_ms=$8, checks=$9,
-                   mechanics_score=$10, completed_at=now()
+                   mechanics_score=$10, finish_reason=$11, completed_at=now()
                where id=$1""",
             _uid(gen_id), f["status"], f.get("output") or "", f.get("error"),
             f.get("prompt_tokens") or 0, f.get("completion_tokens") or 0,
             _dec(f.get("cost") or 0), f.get("latency_ms") or 0, f.get("checks"),
-            f.get("mechanics_score"),
+            f.get("mechanics_score"), f.get("finish_reason") or "",
         )
 
     async def save_judge(self, gen_id, *, status: str, judge: dict | None = None,

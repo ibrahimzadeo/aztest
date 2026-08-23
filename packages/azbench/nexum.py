@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -44,7 +45,37 @@ class Completion:
     latency_ms: int = 0
     model: str = ""
     finish_reason: str = ""
+    reasoning_tokens: int = 0
+    had_reasoning: bool = False
     raw_usage: dict = field(default_factory=dict)
+
+    @property
+    def truncated(self) -> bool:
+        """The provider stopped us at the token cap rather than at an ending."""
+        return self.finish_reason == "length"
+
+    def emptiness_reason(self) -> str | None:
+        """Why there is no answer to score, or None if there is one.
+
+        A reasoning model can spend its whole completion budget thinking and
+        return nothing. That is a configuration problem, not bad writing, and
+        it must never reach the judge as an empty answer to score.
+        """
+        if self.text.strip():
+            return None
+        if self.truncated:
+            return (
+                f"truncated: the whole {self.completion_tokens}-token budget went to "
+                "reasoning and no answer was emitted. Raise 'Maks output token' for "
+                "this model in Settings -> Modellər (thinking models need several "
+                "thousand)."
+            )
+        if self.had_reasoning:
+            return (
+                "the model returned reasoning but no answer "
+                f"(finish_reason={self.finish_reason or 'unknown'})"
+            )
+        return f"empty response (finish_reason={self.finish_reason or 'unknown'})"
 
 
 class NexumClient:
@@ -132,18 +163,30 @@ class NexumClient:
         raise last or ProviderError("exhausted retries")
 
 
+# Some models emit their scratchpad inline in the content instead of in a
+# separate field. Scoring that as the answer would grade the thinking, not
+# the writing.
+_THINK_BLOCK = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.S | re.I)
+_UNCLOSED_THINK = re.compile(r"^\s*<(think|thinking|reasoning)>.*$", re.S | re.I)
+
+
 def _parse_completion(body: dict, model: str, started: float) -> Completion:
     latency_ms = int((time.monotonic() - started) * 1000)
     choices = body.get("choices") or []
     if not choices:
         raise ProviderError(f"no choices in response: {str(body)[:300]}")
     message = choices[0].get("message") or {}
-    text = (message.get("content") or "").strip()
-    # Reasoning models sometimes put everything in `reasoning` and leave
-    # content empty; an empty answer is a real failure for a writing test.
-    if not text and message.get("reasoning"):
-        text = str(message["reasoning"]).strip()
+    text = str(message.get("content") or "")
+    text = _THINK_BLOCK.sub("", text)
+    text = _UNCLOSED_THINK.sub("", text).strip()
+
+    # Reasoning goes in `reasoning` (OpenAI-compatible) or `reasoning_content`
+    # (DeepSeek). It is NEVER used as the answer: a writing benchmark that
+    # scored the scratchpad would be measuring the wrong text.
+    had_reasoning = bool(message.get("reasoning") or message.get("reasoning_content"))
+
     usage = body.get("usage") or {}
+    details = usage.get("completion_tokens_details") or {}
     return Completion(
         text=text,
         prompt_tokens=int(usage.get("prompt_tokens") or 0),
@@ -151,6 +194,8 @@ def _parse_completion(body: dict, model: str, started: float) -> Completion:
         latency_ms=latency_ms,
         model=body.get("model") or model,
         finish_reason=choices[0].get("finish_reason") or "",
+        reasoning_tokens=int(details.get("reasoning_tokens") or 0),
+        had_reasoning=had_reasoning,
         raw_usage=usage,
     )
 

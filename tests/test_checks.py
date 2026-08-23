@@ -117,3 +117,47 @@ class TestSeed(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestCompletionEmptiness(unittest.TestCase):
+    """A missing answer must be diagnosable: bad writing and a blown token
+    budget are different problems with opposite fixes."""
+
+    def _parse(self, message, finish_reason="stop", usage=None):
+        import time
+        from azbench.nexum import _parse_completion
+        return _parse_completion(
+            {"choices": [{"message": message, "finish_reason": finish_reason}],
+             "usage": usage or {}},
+            "m", time.monotonic(),
+        )
+
+    def test_truncated_reasoning_reports_the_token_budget(self):
+        c = self._parse(
+            {"content": "", "reasoning_content": "düşünürəm…"},
+            "length",
+            {"completion_tokens": 1500, "completion_tokens_details": {"reasoning_tokens": 1500}},
+        )
+        self.assertTrue(c.truncated)
+        self.assertEqual(c.reasoning_tokens, 1500)
+        self.assertIn("truncated", c.emptiness_reason())
+        self.assertIn("1500", c.emptiness_reason())
+
+    def test_reasoning_is_never_used_as_the_answer(self):
+        c = self._parse({"content": "", "reasoning": "plan: rəsmi məktub yaz"})
+        self.assertEqual(c.text, "")
+        self.assertIsNotNone(c.emptiness_reason())
+
+    def test_inline_think_block_is_stripped(self):
+        c = self._parse({"content": "<think>plan</think>Hörmətli müştəri."})
+        self.assertEqual(c.text, "Hörmətli müştəri.")
+        self.assertIsNone(c.emptiness_reason())
+
+    def test_unclosed_think_block_leaves_no_answer(self):
+        c = self._parse({"content": "<think>düşünürəm və bitirmədim"}, "length")
+        self.assertEqual(c.text, "")
+        self.assertIn("truncated", c.emptiness_reason())
+
+    def test_a_real_answer_has_no_emptiness_reason(self):
+        c = self._parse({"content": "Hörmətli müştəri, salam."})
+        self.assertIsNone(c.emptiness_reason())

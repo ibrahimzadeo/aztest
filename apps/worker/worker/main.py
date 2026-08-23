@@ -137,7 +137,7 @@ async def _generate_and_score(db, client, gen, run, roster, jcfg) -> None:
             gen["prompt"],
             system=gen["system_prompt"] or None,
             temperature=_num(model_cfg.get("temperature"), run["temperature"]),
-            max_tokens=int(model_cfg.get("max_output_tokens") or run["max_output_tokens"] or 1500),
+            max_tokens=int(model_cfg.get("max_output_tokens") or run["max_output_tokens"] or 4000),
         )
     except ProviderError as exc:
         await db.finish_generation(gen["id"], status="ERROR", error=str(exc)[:2000])
@@ -145,19 +145,39 @@ async def _generate_and_score(db, client, gen, run, roster, jcfg) -> None:
         log.warning("gen %s (%s) failed: %s", gen["id"], gen["model_id"], exc)
         return
 
-    checks = run_checks(completion.text)
     cost = cost_usd(
         completion.prompt_tokens,
         completion.completion_tokens,
         model_cfg.get("input_price_per_m") or 0,
         model_cfg.get("output_price_per_m") or 0,
     )
+    # An answer that never arrived is a configuration failure, not bad
+    # writing. Scoring it would put a reasoning model that blew its token
+    # budget on the leaderboard as if it wrote badly — so record why, keep the
+    # tokens and cost it really spent, and never hand it to the judge.
+    empty = completion.emptiness_reason()
+    if empty:
+        await db.finish_generation(
+            gen["id"], status="ERROR", error=empty,
+            prompt_tokens=completion.prompt_tokens,
+            completion_tokens=completion.completion_tokens,
+            cost=cost, latency_ms=completion.latency_ms,
+            finish_reason=completion.finish_reason,
+        )
+        await db.save_judge(gen["id"], status="SKIPPED", error="no answer to score")
+        log.warning("gen %s (%s): %s", gen["id"], gen["model_id"], empty)
+        return
+
+    checks = run_checks(completion.text)
     await db.finish_generation(
         gen["id"], status="DONE", output=completion.text,
         prompt_tokens=completion.prompt_tokens, completion_tokens=completion.completion_tokens,
         cost=cost, latency_ms=completion.latency_ms, checks=checks,
         mechanics_score=checks["mechanics_score"],
+        finish_reason=completion.finish_reason,
     )
+    if completion.truncated:
+        log.info("gen %s (%s): answer was cut off at the token cap", gen["id"], gen["model_id"])
 
     if not (run["judge_enabled"] and run["judge_model"]):
         await db.save_judge(gen["id"], status="OFF")
