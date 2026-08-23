@@ -108,3 +108,39 @@ class TestStreaming(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestRequestTuning(unittest.TestCase):
+    """Model quirks are configuration. The knobs must reach the request, and
+    must not be able to break the request itself."""
+
+    def _sent(self, **kw):
+        seen = {}
+
+        def handler(request):
+            seen.update(json.loads(request.content))
+            return httpx.Response(200, content=sse(delta("ok"), delta(finish="stop")))
+
+        run(client_with(handler).complete("m", "p", attempts=1, **kw))
+        return seen
+
+    def test_reasoning_effort_is_sent(self):
+        self.assertEqual(self._sent(reasoning_effort="low")["reasoning_effort"], "low")
+
+    def test_empty_reasoning_effort_is_omitted(self):
+        self.assertNotIn("reasoning_effort", self._sent(reasoning_effort=""))
+
+    def test_extra_params_are_merged(self):
+        sent = self._sent(extra_params={"enable_thinking": False, "top_p": 0.8})
+        self.assertIs(sent["enable_thinking"], False)
+        self.assertEqual(sent["top_p"], 0.8)
+
+    def test_extra_params_cannot_break_the_request(self):
+        # A typo in settings must not un-stream the call or send a different
+        # model than the results are filed under.
+        sent = self._sent(extra_params={"model": "other", "stream": False,
+                                        "messages": [], "stream_options": None})
+        self.assertEqual(sent["model"], "m")
+        self.assertTrue(sent["stream"])
+        self.assertEqual(sent["stream_options"], {"include_usage": True})
+        self.assertTrue(sent["messages"])

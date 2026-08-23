@@ -45,6 +45,10 @@ class ModelIn(BaseModel):
     max_output_tokens: int | None = None
     temperature: float | None = None
     notes: str = ""
+    # "", "minimal", "low", "medium", "high" — sent as reasoning_effort.
+    reasoning_effort: str = ""
+    # Vendor-specific request fields, e.g. {"enable_thinking": false}.
+    extra_params: dict = Field(default_factory=dict)
 
 
 @router.get("/settings")

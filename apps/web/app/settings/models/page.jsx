@@ -6,7 +6,10 @@ import { api, del, post } from "@/lib/api";
 const BLANK = {
   model_id: "", label: "", enabled: true, input_price_per_m: 0, output_price_per_m: 0,
   max_output_tokens: null, temperature: null, notes: "",
+  reasoning_effort: "", extra_params: {},
 };
+
+const EFFORTS = ["", "minimal", "low", "medium", "high"];
 
 export default function Models() {
   const [roster, setRoster] = useState([]);
@@ -39,12 +42,28 @@ export default function Models() {
   async function saveEdit(e) {
     e.preventDefault();
     try {
+      let extra = {};
+      const raw = (edit.extra_json ?? JSON.stringify(edit.extra_params || {}, null, 0)).trim();
+      if (raw && raw !== "{}") {
+        try {
+          extra = JSON.parse(raw);
+        } catch {
+          setError("Əlavə parametrlər düzgün JSON deyil.");
+          return;
+        }
+        if (Array.isArray(extra) || typeof extra !== "object") {
+          setError("Əlavə parametrlər JSON obyekti olmalıdır, məsələn {\"enable_thinking\": false}");
+          return;
+        }
+      }
       await post("/models", {
         ...edit,
         input_price_per_m: Number(edit.input_price_per_m || 0),
         output_price_per_m: Number(edit.output_price_per_m || 0),
         max_output_tokens: edit.max_output_tokens ? Number(edit.max_output_tokens) : null,
         temperature: edit.temperature === "" || edit.temperature === null ? null : Number(edit.temperature),
+        reasoning_effort: edit.reasoning_effort || "",
+        extra_params: extra,
       });
       setEdit(null);
       load();
@@ -92,7 +111,7 @@ export default function Models() {
             <thead>
               <tr>
                 <th>Model</th><th>Ad</th><th>Aktiv</th><th>Input $/1M</th><th>Output $/1M</th>
-                <th>Maks token</th><th>Temp</th><th />
+                <th>Maks token</th><th>Düşünmə</th><th>Əlavə</th><th />
               </tr>
             </thead>
             <tbody>
@@ -104,7 +123,12 @@ export default function Models() {
                   <td className="mono">{Number(m.input_price_per_m).toFixed(2)}</td>
                   <td className="mono">{Number(m.output_price_per_m).toFixed(2)}</td>
                   <td className="mono dim">{m.max_output_tokens || "—"}</td>
-                  <td className="mono dim">{m.temperature ?? "—"}</td>
+                  <td className="mono dim">{m.reasoning_effort || "—"}</td>
+                  <td className="mono dim" style={{ maxWidth: 180, overflow: "hidden" }}>
+                    {m.extra_params && Object.keys(m.extra_params).length
+                      ? JSON.stringify(m.extra_params)
+                      : "—"}
+                  </td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button className="btn small ghost" onClick={() => setEdit({ ...m })}>Redaktə</button>{" "}
                     <button className="btn small ghost" onClick={() => remove(m)}>Sil</button>
@@ -140,10 +164,31 @@ export default function Models() {
                      onChange={(e) => setEdit({ ...edit, max_output_tokens: e.target.value })} />
             </div>
             <div>
+              <label className="lbl">Düşünmə həddi</label>
+              <select className="field" value={edit.reasoning_effort || ""}
+                      onChange={(e) => setEdit({ ...edit, reasoning_effort: e.target.value })}>
+                {EFFORTS.map((v) => <option key={v} value={v}>{v || "— defolt —"}</option>)}
+              </select>
+              <p className="hint">reasoning_effort. Bütün modellər dəstəkləmir.</p>
+            </div>
+            <div>
               <label className="lbl">Temperature</label>
               <input className="field" type="number" step="0.1" value={edit.temperature ?? ""}
                      onChange={(e) => setEdit({ ...edit, temperature: e.target.value })} />
               <p className="hint">Boş = run defoltu.</p>
+            </div>
+            <div className="wide">
+              <label className="lbl">Əlavə parametrlər (JSON)</label>
+              <input className="field mono"
+                     value={edit.extra_json ?? JSON.stringify(edit.extra_params || {})}
+                     onChange={(e) => setEdit({ ...edit, extra_json: e.target.value })} />
+              <p className="hint">
+                Sorğuya olduğu kimi əlavə olunur — məsələn{" "}
+                <span className="mono">{'{"enable_thinking": false}'}</span> və ya{" "}
+                <span className="mono">{'{"thinking": {"type": "disabled"}}'}</span>.
+                Düşünməyə bütün büdcəni xərcləyən modeli belə susdurmaq olar.
+                model/messages/stream sahələri qorunur.
+              </p>
             </div>
             <div className="wide">
               <label className="lbl">Qeyd</label>

@@ -81,8 +81,9 @@ class Database:
     async def upsert_model(self, **f) -> dict:
         return await self.fetchrow(
             """insert into models (model_id, label, enabled, input_price_per_m,
-                   output_price_per_m, max_output_tokens, temperature, notes)
-               values ($1,$2,$3,$4,$5,$6,$7,$8)
+                   output_price_per_m, max_output_tokens, temperature, notes,
+                   reasoning_effort, extra_params)
+               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                on conflict (model_id) do update set
                    label = excluded.label,
                    enabled = excluded.enabled,
@@ -90,7 +91,9 @@ class Database:
                    output_price_per_m = excluded.output_price_per_m,
                    max_output_tokens = excluded.max_output_tokens,
                    temperature = excluded.temperature,
-                   notes = excluded.notes
+                   notes = excluded.notes,
+                   reasoning_effort = excluded.reasoning_effort,
+                   extra_params = excluded.extra_params
                returning *""",
             f["model_id"],
             f.get("label") or "",
@@ -100,6 +103,8 @@ class Database:
             f.get("max_output_tokens"),
             _dec(f.get("temperature")),
             f.get("notes") or "",
+            f.get("reasoning_effort") or "",
+            f.get("extra_params") or {},
         )
 
     async def delete_model(self, model_id: str) -> None:
@@ -293,12 +298,14 @@ class Database:
         await self.execute(
             """update generations set status=$2, output=$3, error=$4, prompt_tokens=$5,
                    completion_tokens=$6, cost=$7, latency_ms=$8, checks=$9,
-                   mechanics_score=$10, finish_reason=$11, completed_at=now()
+                   mechanics_score=$10, finish_reason=$11, reasoning_tokens=$12,
+                   completed_at=now()
                where id=$1""",
             _uid(gen_id), f["status"], f.get("output") or "", f.get("error"),
             f.get("prompt_tokens") or 0, f.get("completion_tokens") or 0,
             _dec(f.get("cost") or 0), f.get("latency_ms") or 0, f.get("checks"),
             f.get("mechanics_score"), f.get("finish_reason") or "",
+            f.get("reasoning_tokens") or 0,
         )
 
     async def save_judge(self, gen_id, *, status: str, judge: dict | None = None,
