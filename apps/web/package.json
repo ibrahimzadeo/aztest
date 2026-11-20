@@ -9,7 +9,7 @@
     "test": "node --test lib/"
   },
   "dependencies": {
-    "next": "15.1.12",
+    "next": "15.5.29",
     "react": "19.0.9",
     "react-dom": "19.0.9"
   }
